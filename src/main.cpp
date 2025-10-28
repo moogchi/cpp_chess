@@ -1,13 +1,28 @@
-#include "piece.h"
+#include "board.h"
+#include "move.h"
 #include <iostream>
+#include <vector>
 
-int main()
-{
-    Piece whitePawn('W', 'P');
-    Piece blackQueen('B', 'Q');
+using std::cout;
 
-    std::cout << "White Pawn: " << whitePawn.getSymbol() << ", Color: " << whitePawn.getColor() << ", Type: " << whitePawn.getType() << "\n";
-    std::cout << "Black Queen: " << blackQueen.getSymbol() << ", Color: " << blackQueen.getColor() << ", Type: " << blackQueen.getType() << "\n";
+int main() {
+  Board my_board;
 
-    return 0;
+  cout << "Initial board" << '\n';
+
+  my_board.print_board();
+
+  cout << "Generating move for white" << '\n';
+
+  std::vector<Move> move_list;
+
+  my_board.generate_pseudo_legal_moves(move_list);
+
+  cout << "Found " << move_list.size() << " pseudolegal moves:" << '\n';
+
+  for (const Move &move : move_list) {
+    std::cout << move_to_string(move) << '\n';
+  }
+
+  return 0;
 }

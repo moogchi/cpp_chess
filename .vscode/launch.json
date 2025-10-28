@@ -8,8 +8,8 @@
       "args": [],
       "stopAtEntry": false,
       "externalConsole": false,
-      "cwd": "/home/sihoon/Coding/cpp_chess",
-      "program": "/home/sihoon/Coding/cpp_chess/build/Debug/outDebug",
+      "cwd": "/home/sihoon/Coding/cpp_chess/src",
+      "program": "/home/sihoon/Coding/cpp_chess/src/build/Debug/outDebug",
       "MIMode": "gdb",
       "miDebuggerPath": "gdb",
       "setupCommands": [
