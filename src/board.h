@@ -50,7 +50,7 @@ struct Board {
 
   Side get_piece_side(Piece p) const;
 
-  int evaluate();
+  int evaluate() const;
 
 private: // encapsulated function for moves
   void generate_pawn_moves(int square, std::vector<Move> &moves) const;

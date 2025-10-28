@@ -7,6 +7,16 @@ using std::cout;
 
 struct Move;
 
+constexpr int piece_values[13] = {
+    100,  300, 300, 500, 900, 0, -100, // B_
+    -300,                              // B_KNIGHT
+    -300,                              // B_BISHOP
+    -500,                              // B_QUEEN
+    -900,                              // B_QUEEN
+    0,                                 // B_KING
+    0                                  // EMPTY
+};
+
 char get_piece_char(Piece p) {
   switch (p) {
   case W_PAWN:
@@ -339,4 +349,12 @@ void Board::generate_sliding_moves(int square, std::vector<Move> &moves) const {
       }
     }
   }
+}
+
+int Board::evaluate() const {
+  int score = 0;
+  for (int i = 0; i < 64; ++i) {
+    score += piece_values[pieces[i]];
+  }
+  return score;
 }
