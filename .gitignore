@@ -1,0 +1,10 @@
+# Ignore object files
+*.o
+
+# Ignore executable binary
+chess_engine
+
+# Optional: ignore build directories
+/build/
+/bin/
+/.vscode/
