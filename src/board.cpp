@@ -1,11 +1,17 @@
 #include "board.h"
 #include "move.h"
+#include <algorithm>
+#include <cmath>
 #include <iostream>
+#include <vector>
 
 using std::abs;
 using std::cout;
 
 struct Move;
+
+constexpr int INFINITY_SCORE = 1000000;
+constexpr int CHECKMATE_SCORE = 999999;
 
 constexpr int piece_values[13] = {
     100,  300, 300, 500, 900, 0, -100, // B_
@@ -221,9 +227,19 @@ void Board::generate_pawn_moves(int square, std::vector<Move> &moves) const {
 
   int capture_right = square + 8 * dir + 1;
   if (capture_right >= 0 && capture_right < 64 &&
-      (capture_right % 8) == current_column - 1) {
+      (capture_right % 8) == current_column + 1) {
     if (is_opponent_piece(pieces[capture_right])) {
       add_pawn_move(square, capture_right, moves);
+    }
+  }
+
+  // en passant
+  if (en_passant_square != -1) {
+    if (capture_left == en_passant_square) {
+      moves.push_back(Move(square, en_passant_square));
+    }
+    if (capture_right == en_passant_square) {
+      moves.push_back(Move(square, en_passant_square));
     }
   }
 }
@@ -286,6 +302,29 @@ void Board::generate_king_moves(int square, std::vector<Move> &moves) const {
 
     if (!is_our_piece(pieces[to_square])) {
       moves.push_back(Move(square, to_square));
+    }
+  }
+
+  // castling
+  if (side_to_move == WHITE && square == 4) {
+    // white kingside
+    if ((castling_rights & WK) && pieces[5] == EMPTY && pieces[6] == EMPTY) {
+      moves.push_back(Move(4, 6));
+    }
+    // white queenside
+    if ((castling_rights & WQ) && pieces[1] == EMPTY && pieces[2] == EMPTY &&
+        pieces[3] == EMPTY) {
+      moves.push_back(Move(4, 2));
+    }
+  } else if (side_to_move == BLACK && square == 60) {
+    // black kingside
+    if ((castling_rights & BK) && pieces[61] == EMPTY && pieces[62] == EMPTY) {
+      moves.push_back(Move(60, 62));
+    }
+    // black queenside
+    if ((castling_rights & BQ) && pieces[57] == EMPTY && pieces[58] == EMPTY &&
+        pieces[59] == EMPTY) {
+      moves.push_back(Move(60, 58));
     }
   }
 }
@@ -357,4 +396,377 @@ int Board::evaluate() const {
     score += piece_values[pieces[i]];
   }
   return score;
+}
+
+BoardState Board::make_move(Move m) {
+
+  // state objects to store info to for unmake move function
+  BoardState prev_state;
+  prev_state.captured_piece = EMPTY;
+  prev_state.en_passant_square = en_passant_square;
+  prev_state.castling_rights = castling_rights;
+
+  // move details
+  int from = m.from;
+  int to = m.to;
+  Piece p = pieces[from];
+  Piece captured = pieces[to];
+
+  pieces[to] = p;
+  pieces[from] = EMPTY;
+
+  if (captured != EMPTY) {
+    prev_state.captured_piece = captured;
+  }
+
+  if (m.promotion_piece != EMPTY) {
+    pieces[to] = m.promotion_piece;
+  }
+
+  en_passant_square = -1;
+
+  // en passant brh
+  if (p == W_PAWN || p == B_PAWN) {
+    if (to == prev_state.en_passant_square) {
+      // This IS an en passant capture
+      int capture_square;
+      if (side_to_move == WHITE) {
+        capture_square = to - 8; // Black pawn is 1 rank below
+      } else {
+        capture_square = to + 8; // White pawn is 1 rank above
+      }
+      prev_state.captured_piece = pieces[capture_square]; // Store captured pawn
+      pieces[capture_square] = EMPTY;                     // Remove it
+    } else if (std::abs(to - from) == 16) {
+      // This is a double pawn push, set the en passant square
+      if (side_to_move == WHITE) {
+        en_passant_square = from + 8;
+      } else {
+        en_passant_square = from - 8;
+      }
+    }
+  }
+  // i hate en passant
+
+  // castling
+  if ((p == W_KING || p == B_KING) && std::abs(from - to) == 2) {
+    switch (to) {
+    case 6:
+      pieces[5] = pieces[7];
+      pieces[7] = EMPTY;
+      break;
+    case 2:
+      pieces[3] = pieces[0];
+      pieces[0] = EMPTY;
+      break;
+    case 62:
+      pieces[61] = pieces[63];
+      pieces[63] = EMPTY;
+      break;
+    case 58:
+      pieces[59] = pieces[56];
+      pieces[56] = EMPTY;
+      break;
+    }
+  }
+
+  // bitwise castlign right check
+  if (p == W_KING) {
+    castling_rights &= ~(WK | WQ);
+  } else if (p == B_KING) {
+    castling_rights &= ~(BK | BQ);
+  } else if (from == 0 || to == 0) { // a1 rook move/capture
+    castling_rights &= ~WQ;
+  } else if (from == 7 || to == 7) { // h1 rook move/capture
+    castling_rights &= ~WK;
+  } else if (from == 56 || to == 56) { // a8 rook move/capture
+    castling_rights &= ~BQ;
+  } else if (from == 63 || to == 63) { // h8 rook move/capture
+    castling_rights &= ~BK;
+  }
+
+  // if rook is captured on the home tile the rights are removed
+  if (captured != EMPTY) {
+    if (to == 0)
+      castling_rights &= ~WQ;
+    else if (to == 7)
+      castling_rights &= ~WK;
+    else if (to == 56)
+      castling_rights &= ~BQ;
+    else if (to == 63)
+      castling_rights &= ~BK;
+  }
+
+  side_to_move = (side_to_move == WHITE) ? BLACK : WHITE;
+
+  return prev_state;
+}
+
+void Board::unmake_move(Move m, const BoardState &prev_state) {
+  int from = m.from;
+  int to = m.to;
+  Piece p = pieces[to];
+
+  side_to_move = (side_to_move == WHITE) ? BLACK : WHITE;
+  en_passant_square = prev_state.en_passant_square;
+  castling_rights = prev_state.castling_rights;
+
+  if (m.promotion_piece != EMPTY) {
+    p = (side_to_move == WHITE) ? W_PAWN : B_PAWN;
+  }
+
+  pieces[from] = p;
+  pieces[to] = prev_state.captured_piece;
+
+  if ((p == W_PAWN || p == B_PAWN) && to == prev_state.en_passant_square) {
+    pieces[to] = EMPTY;
+    int capture_square;
+    if (side_to_move == WHITE) {
+      capture_square = to - 8;
+    } else {
+      capture_square = to + 8;
+    }
+    pieces[capture_square] = prev_state.captured_piece;
+  }
+
+  if ((p == W_KING || p == B_KING) && std::abs(from - to) == 2) {
+    switch (to) {
+    case 6:
+      pieces[7] = pieces[5];
+      pieces[5] = EMPTY;
+      break;
+    case 2:
+      pieces[0] = pieces[3];
+      pieces[3] = EMPTY;
+      break;
+    case 62:
+      pieces[63] = pieces[61];
+      pieces[61] = EMPTY;
+      break;
+    case 58:
+      pieces[56] = pieces[59];
+      pieces[59] = EMPTY;
+      break;
+    }
+  }
+}
+
+bool Board::is_square_attacked(int square, Side attacking_side) const {
+  // pawn attacks
+  int dir = (attacking_side == WHITE) ? -1 : 1;
+  Piece attacker_pawn = (attacking_side == WHITE) ? W_PAWN : B_PAWN;
+
+  int capture_left = square + (8 * dir) - 1;
+  int capture_right = square + (8 * dir) + 1;
+  int current_col = square % 8;
+
+  if (capture_left >= 0 && capture_left < 64 &&
+      (capture_left % 8) == current_col - 1) {
+    if (pieces[capture_left] == attacker_pawn)
+      return true;
+  }
+  if (capture_right >= 0 && capture_right < 64 &&
+      (capture_right % 8) == current_col + 1) {
+    if (pieces[capture_right] == attacker_pawn)
+      return true;
+  }
+
+  // knight attacks
+  Piece attacker_knight = (attacking_side == WHITE) ? W_KNIGHT : B_KNIGHT;
+  constexpr int knight_offsets[8] = {-17, -15, -10, -6, 6, 10, 15, 17};
+  int from_row = square / 8;
+  int from_col = square % 8;
+
+  for (int offset : knight_offsets) {
+    int to_square = square + offset;
+    if (to_square < 0 || to_square > 63)
+      continue;
+
+    int to_row = to_square / 8;
+    int to_col = to_square % 8;
+    int row_diff = abs(to_row - from_row);
+    int col_diff = abs(to_col - from_col);
+    if (!((row_diff == 2 && col_diff == 1) ||
+          (row_diff == 1 && col_diff == 2))) {
+      continue;
+    }
+
+    if (pieces[to_square] == attacker_knight)
+      return true;
+  }
+
+  // sliding attacks (rook, bishop, queen)
+  Piece attacker_rook = (attacking_side == WHITE) ? W_ROOK : B_ROOK;
+  Piece attacker_bishop = (attacking_side == WHITE) ? W_BISHOP : B_BISHOP;
+  Piece attacker_queen = (attacking_side == WHITE) ? W_QUEEN : B_QUEEN;
+
+  constexpr int all_offsets[8] = {-8, -1, 1, 8, -9, -7, 7, 9};
+
+  for (int i = 0; i < 8; ++i) {
+    int offset = all_offsets[i];
+    int to_square = square;
+
+    while (true) {
+      to_square += offset;
+      if (to_square < 0 || to_square > 63)
+        break;
+
+      int prev_square = to_square - offset;
+      int prev_row = prev_square / 8;
+      int prev_col = prev_square % 8;
+      int to_row = to_square / 8;
+      int to_col = to_square % 8;
+      int row_diff = abs(to_row - prev_row);
+      int col_diff = abs(to_col - prev_col);
+
+      if (offset == -1 || offset == 1) {
+        if (row_diff != 0)
+          break;
+      } else if (offset == -8 || offset == 8) {
+        if (col_diff != 0)
+          break;
+      } else {
+        if (row_diff != 1 || col_diff != 1)
+          break;
+      }
+
+      Piece p_on_square = pieces[to_square];
+
+      if (p_on_square != EMPTY) {
+        if (get_piece_side(p_on_square) == attacking_side) {
+          if (i < 4) {
+            if (p_on_square == attacker_rook || p_on_square == attacker_queen) {
+              return true;
+            }
+          } else {
+            if (p_on_square == attacker_bishop ||
+                p_on_square == attacker_queen) {
+              return true;
+            }
+          }
+        }
+        break;
+      }
+    }
+  }
+
+  // king attacks
+  Piece attacker_king = (attacking_side == WHITE) ? W_KING : B_KING;
+  constexpr int king_offsets[8] = {-9, -8, -7, -1, 1, 7, 8, 9};
+  from_row = square / 8;
+  from_col = square % 8;
+
+  for (int offset : king_offsets) {
+    int to_square = square + offset;
+    if (to_square < 0 || to_square > 63)
+      continue;
+
+    int to_row = to_square / 8;
+    int to_col = to_square % 8;
+    int row_diff = abs(to_row - from_row);
+    int col_diff = abs(to_col - from_col);
+    if (row_diff > 1 || col_diff > 1)
+      continue;
+
+    if (pieces[to_square] == attacker_king)
+      return true;
+  }
+
+  return false;
+}
+
+bool Board::is_in_check() const {
+  Piece our_king = (side_to_move == WHITE) ? W_KING : B_KING;
+  Side opponent_side = (side_to_move == WHITE) ? BLACK : WHITE;
+  int king_square = -1;
+
+  for (int i = 0; i < 64; ++i) {
+    if (pieces[i] == our_king) {
+      king_square = i;
+      break;
+    }
+  }
+
+  if (king_square == -1) {
+    return false;
+  }
+
+  return is_square_attacked(king_square, opponent_side);
+}
+
+void Board::generate_legal_moves(std::vector<Move> &moves) {
+  std::vector<Move> pseudo_moves;
+  generate_pseudo_legal_moves(pseudo_moves);
+
+  moves.clear();
+
+  for (Move m : pseudo_moves) {
+    BoardState state = make_move(m);
+
+    if (!is_in_check()) {
+      moves.push_back(m);
+    }
+
+    unmake_move(m, state);
+  }
+}
+
+int Board::negamax(int depth, int alpha, int beta) {
+  if (depth == 0) {
+    return evaluate() * (side_to_move == WHITE ? 1 : -1);
+  }
+
+  std::vector<Move> moves;
+  generate_legal_moves(moves);
+
+  if (moves.empty()) {
+    if (is_in_check()) {
+      return -(CHECKMATE_SCORE + depth);
+    } else {
+      return 0;
+    }
+  }
+
+  int best_score = -INFINITY_SCORE;
+
+  for (Move m : moves) {
+    BoardState state = make_move(m);
+
+    int score = -negamax(depth - 1, -beta, -alpha);
+
+    unmake_move(m, state);
+
+    best_score = std::max(best_score, score);
+    alpha = std::max(alpha, best_score);
+
+    if (alpha >= beta) {
+      break;
+    }
+  }
+
+  return best_score;
+}
+
+Move Board::find_best_move(int depth) {
+  std::vector<Move> moves;
+  generate_legal_moves(moves);
+
+  Move best_move;
+  int alpha = -INFINITY_SCORE;
+  int beta = INFINITY_SCORE;
+
+  for (Move m : moves) {
+    BoardState state = make_move(m);
+
+    int score = -negamax(depth - 1, -beta, -alpha);
+
+    unmake_move(m, state);
+
+    if (score > alpha) {
+      alpha = score;
+      best_move = m;
+    }
+  }
+
+  return best_move;
 }

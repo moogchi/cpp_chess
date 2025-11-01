@@ -23,6 +23,12 @@ enum Piece {
   EMPTY
 };
 
+struct BoardState {
+  Piece captured_piece;
+  int en_passant_square;
+  int castling_rights;
+};
+
 enum Side { WHITE, BLACK };
 
 // will use bitwise operator to check if its possible to castle
@@ -52,6 +58,15 @@ struct Board {
 
   int evaluate() const;
 
+  Move find_best_move(int depth);
+
+  BoardState make_move(Move m);
+  void unmake_move(Move m, const BoardState &prev_state);
+
+  bool is_in_check() const;
+
+  void generate_legal_moves(std::vector<Move> &moves);
+
 private: // encapsulated function for moves
   void generate_pawn_moves(int square, std::vector<Move> &moves) const;
   void generate_knight_moves(int square, std::vector<Move> &moves) const;
@@ -63,6 +78,10 @@ private: // encapsulated function for moves
 
   bool is_our_piece(Piece p) const;
   bool is_opponent_piece(Piece p) const;
+
+  bool is_square_attacked(int square, Side attacking_side) const;
+
+  int negamax(int depth, int alpha, int beta);
 };
 
 #endif

@@ -7,9 +7,12 @@
 using std::string;
 
 struct Move {
-  int from; // index 0-63
-  int to;   // index 0-63
-  Piece promotion_piece;
+  int from = 0; // index 0-63
+  int to = 0;   // index 0-63
+  Piece promotion_piece = EMPTY;
+
+  // Default Constructor
+  Move() : from(0), to(0), promotion_piece(EMPTY) {}
 
   // Normal Move Constructor
   Move(int from, int to) : from(from), to(to), promotion_piece(EMPTY) {}
